@@ -1,0 +1,52 @@
+name:Flight Booking CCID
+on:
+  push:
+    branches:
+      -dev
+      - main
+jobs:
+ upload-to-dev:
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+     steps:
+      # Checkout the repository
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Authenticate to GCP
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      # Setup Google Cloud SDK
+      - name: Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      # Upload `variables.json` to Composer bucket
+      - name: Upload Variables JSON to GCS
+        run: |
+          gsutil cp variables/dev/variables.json gs://us-central1-airflowtest-d2628cb2-bucket/data/dev/variables.json
+
+      # Import Variables into Airflow-DEV
+      - name: Import Variables into Airflow-DEV
+        run: |
+          gcloud composer environments run airflowtest \
+            --location us-central1 \
+            variables import -- /home/airflow/gcs/data/dev/variables.json
+
+      # Sync Spark job to GCS
+      - name: Upload Spark Job to GCS
+        run: |
+          gsutil cp spark_job/flight_job.py gs://airflow_demo_data/fighlt_data/spark_job/
+
+      # Sync Airflow DAG to Airflow DEV Composer
+      - name: Upload Airflow DAG to DEV Environment (Dag Folder)
+        run: |
+          gcloud composer environments storage dags import \
+            --environment airflowtest \
+            --location us-central1 \
+            --source airflow_job/flight_task.py
+
